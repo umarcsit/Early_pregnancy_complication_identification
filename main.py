@@ -364,6 +364,102 @@ def get_missing_features(data: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"Error checking missing features: {str(e)}")
         raise HTTPException(status_code=400, detail=f"Error checking missing features: {str(e)}")
 
+def validate_and_clean_data_for_model(data: Dict[str, Any], model_name: str) -> pd.DataFrame:
+    """Clean and validate input data for a specific model"""
+    try:
+        # Convert to DataFrame
+        df = pd.DataFrame([data])
+        
+        # Get required columns for this specific model
+        if model_name not in MODEL_CONFIG:
+            raise HTTPException(status_code=400, detail=f"Model {model_name} not found in configuration")
+        
+        required_cols = MODEL_CONFIG[model_name]['training_columns']
+        
+        # Add missing columns with appropriate defaults
+        for col in required_cols:
+            if col not in df.columns:
+                # Determine default based on column name patterns
+                if any(keyword in col.lower() for keyword in ['age', 'bmi', 'weeks', 'score', 'b.p', 'bp', 'pulse', 'rate', 'temp', 'height', 'number']):
+                    # Special handling for Apgar scores
+                    if 'apgar' in col.lower():
+                        df[col] = 7.0  # Normal Apgar score default
+                    else:
+                        df[col] = 0.0
+                else:
+                    # Special handling for specific postnatal columns
+                    if col == 'Postnatal_Symptoms':
+                        df[col] = 'normal'  # Default to normal symptoms
+                    elif col == 'Postnatal_Examination':
+                        df[col] = 'normal'  # Default to normal examination
+                    else:
+                        df[col] = 'not specified'
+        
+        # Clean data types
+        for col in df.columns:
+            # First, convert everything to string to handle mixed types
+            df[col] = df[col].astype(str)
+            
+            # Handle null/empty values
+            df[col] = df[col].replace(['nan', 'none', 'null', '', 'na', 'NaN', 'None', 'NULL'], 'not specified')
+            
+            # Determine if column should be numeric based on patterns
+            is_numeric_column = any(keyword in col.lower() for keyword in ['age', 'bmi', 'weeks', 'score', 'b.p', 'bp', 'pulse', 'rate', 'temp', 'height', 'number'])
+            
+            if is_numeric_column:
+                # Special handling for Apgar scores
+                if 'apgar' in col.lower():
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(7.0)  # Default Apgar score
+                else:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            else:
+                # Keep as string for categorical columns
+                df[col] = df[col].astype(str).str.strip()
+                df[col] = df[col].replace(['nan', 'none', 'null', '', 'na', 'NaN', 'None', 'NULL'], 'not specified')
+                
+                # Apply specific defaults for postnatal columns
+                if col == 'Postnatal_Symptoms' and df[col].iloc[0] == 'not specified':
+                    df[col] = 'normal'
+                elif col == 'Postnatal_Examination' and df[col].iloc[0] == 'not specified':
+                    df[col] = 'normal'
+        
+        # Return only the required columns for this model
+        return df[required_cols].copy()
+        
+    except Exception as e:
+        logger.error(f"Error in data validation for {model_name}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Data validation error for {model_name}: {str(e)}")
+
+def get_missing_features_for_model(data: Dict[str, Any], model_name: str) -> Dict[str, Any]:
+    """Check which features are missing from input data for a specific model"""
+    try:
+        if model_name not in MODEL_CONFIG:
+            raise HTTPException(status_code=500, detail=f"Model {model_name} not found in configuration")
+        
+        config = MODEL_CONFIG[model_name]
+        required_cols = set(config['training_columns'])
+        
+        # Check which columns are provided
+        provided_cols = set(data.keys())
+        missing_cols = required_cols - provided_cols
+        
+        return {
+            "model_name": model_name,
+            "target_column": config['target_column'],
+            "total_required_features": len(required_cols),
+            "provided_features": len(provided_cols),
+            "missing_features_count": len(missing_cols),
+            "missing_features": sorted(list(missing_cols)),
+            "provided_features": sorted(list(provided_cols)),
+            "required_features": sorted(list(required_cols)),
+            "completeness_percentage": round((len(provided_cols) / len(required_cols)) * 100, 2)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking missing features for {model_name}: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Error checking missing features for {model_name}: {str(e)}")
+
+
 def make_prediction(model, data: pd.DataFrame, model_name: str) -> tuple:
     """Make prediction with appropriate preprocessing based on model type"""
     try:
@@ -474,6 +570,182 @@ async def outcome_model(data: PatientData):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ==================== NEW INDIVIDUAL MODEL ENDPOINTS ====================
+@app.post("/predict/mode-of-delivery")
+async def predict_mode_of_delivery(data: PatientData):
+    """Predict Mode of Delivery (Individual Model Endpoint)"""
+    try:
+        model_name = "Mode_of_delivery2"
+        
+        # Check if model is loaded
+        if model_name not in loaded_models:
+            raise HTTPException(status_code=500, detail=f"Model {model_name} not loaded")
+        
+        # Validate and clean input data for this specific model
+        model_input = validate_and_clean_data_for_model(data.patientData, model_name)
+        
+        # Make prediction
+        prediction, prob_dict = make_prediction(
+            loaded_models[model_name], 
+            model_input, 
+            model_name
+        )
+        
+        # Get missing features info
+        missing_info = get_missing_features_for_model(data.patientData, model_name)
+        
+        # Prepare response
+        response = {
+            "message": f"Prediction completed for {model_name}",
+            "model_name": model_name,
+            "target_column": MODEL_CONFIG[model_name]['target_column'],
+            "prediction": prediction,
+            "probabilities": prob_dict,
+            "feature_completeness": missing_info['completeness_percentage'],
+            "missing_features_count": missing_info['missing_features_count']
+        }
+        
+        return JSONResponse(content=response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in mode of delivery prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/predict/antenatal-complications")
+async def predict_antenatal_complications(data: PatientData):
+    """Predict Antenatal/Peripartum Maternal Complications (Individual Model Endpoint)"""
+    try:
+        model_name = "Antenatal_Peripartum_Maternal_Complications"
+        
+        # Check if model is loaded
+        if model_name not in loaded_models:
+            raise HTTPException(status_code=500, detail=f"Model {model_name} not loaded")
+        
+        # Validate and clean input data for this specific model
+        model_input = validate_and_clean_data_for_model(data.patientData, model_name)
+        
+        # Make prediction
+        prediction, prob_dict = make_prediction(
+            loaded_models[model_name], 
+            model_input, 
+            model_name
+        )
+        
+        # Get missing features info
+        missing_info = get_missing_features_for_model(data.patientData, model_name)
+        
+        # Prepare response
+        response = {
+            "message": f"Prediction completed for {model_name}",
+            "model_name": model_name,
+            "target_column": MODEL_CONFIG[model_name]['target_column'],
+            "prediction": prediction,
+            "probabilities": prob_dict,
+            "feature_completeness": missing_info['completeness_percentage'],
+            "missing_features_count": missing_info['missing_features_count']
+        }
+        
+        return JSONResponse(content=response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in antenatal complications prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/predict/neonatal-complications")
+async def predict_neonatal_complications(data: PatientData):
+    """Predict Neonatal/Fetal Complications (Individual Model Endpoint)"""
+    try:
+        model_name = "Neonatal__Fetal_Complications"
+        
+        # Check if model is loaded
+        if model_name not in loaded_models:
+            raise HTTPException(status_code=500, detail=f"Model {model_name} not loaded")
+        
+        # Validate and clean input data for this specific model
+        model_input = validate_and_clean_data_for_model(data.patientData, model_name)
+        
+        # Make prediction
+        prediction, prob_dict = make_prediction(
+            loaded_models[model_name], 
+            model_input, 
+            model_name
+        )
+        
+        # Get missing features info
+        missing_info = get_missing_features_for_model(data.patientData, model_name)
+        
+        # Prepare response
+        response = {
+            "message": f"Prediction completed for {model_name}",
+            "model_name": model_name,
+            "target_column": MODEL_CONFIG[model_name]['target_column'],
+            "prediction": prediction,
+            "probabilities": prob_dict,
+            "feature_completeness": missing_info['completeness_percentage'],
+            "missing_features_count": missing_info['missing_features_count'],
+            "note": "This model requires Apgar scores - defaults used if not provided"
+        }
+        
+        return JSONResponse(content=response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in neonatal complications prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.post("/predict/postnatal-complications")
+async def predict_postnatal_complications(data: PatientData):
+    """Predict Postnatal Maternal Complications (Individual Model Endpoint)"""
+    try:
+        model_name = "Postnatal_Maternal_Complications"
+        
+        # Check if model is loaded
+        if model_name not in loaded_models:
+            raise HTTPException(status_code=500, detail=f"Model {model_name} not loaded")
+        
+        # Validate and clean input data for this specific model
+        model_input = validate_and_clean_data_for_model(data.patientData, model_name)
+        
+        # Make prediction
+        prediction, prob_dict = make_prediction(
+            loaded_models[model_name], 
+            model_input, 
+            model_name
+        )
+        
+        # Get missing features info
+        missing_info = get_missing_features_for_model(data.patientData, model_name)
+        
+        # Prepare response
+        response = {
+            "message": f"Prediction completed for {model_name}",
+            "model_name": model_name,
+            "target_column": MODEL_CONFIG[model_name]['target_column'],
+            "prediction": prediction,
+            "probabilities": prob_dict,
+            "feature_completeness": missing_info['completeness_percentage'],
+            "missing_features_count": missing_info['missing_features_count'],
+            "note": "This model requires Apgar scores and postnatal data - defaults used if not provided"
+        }
+        
+        return JSONResponse(content=response)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in postnatal complications prediction: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ==================== END OF NEW ENDPOINTS ====================
+
 
 @app.get("/health")
 async def health_check():
