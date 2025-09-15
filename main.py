@@ -166,8 +166,8 @@ def _create_mock_model(model_name: str):
 MODEL_ORDER = [
     'Mode_of_delivery2',
     'Antenatal_Peripartum_Maternal_Complications',
-    'Neonatal__Fetal_Complications',
-    'Postnatal_Maternal_Complications'
+    # 'Neonatal__Fetal_Complications',
+    # 'Postnatal_Maternal_Complications'
 ]
 
 # Global variables
@@ -689,7 +689,6 @@ async def predict_neonatal_complications(data: PatientData):
             "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count'],
-            "note": "This model requires Apgar scores - defaults used if not provided"
         }
         
         return JSONResponse(content=response)
@@ -732,7 +731,7 @@ async def predict_postnatal_complications(data: PatientData):
             "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count'],
-            "note": "This model requires Apgar scores and postnatal data - defaults used if not provided"
+            
         }
         
         return JSONResponse(content=response)
@@ -771,15 +770,6 @@ async def health_check():
         }
     }
 
-@app.get("/models/info")
-async def models_info():
-    """Get information about loaded models"""
-    return {
-        "loaded_models": list(loaded_models.keys()),
-        "model_order": MODEL_ORDER,
-        "total_models": len(loaded_models),
-        "model_types": {k: "pipeline" if v else "standalone" for k, v in model_is_pipeline.items()}
-    }
 
 @app.get("/features/required")
 async def get_required_features():

@@ -101,8 +101,7 @@
             "Per vaginal examination",
             "Per vaginal examination (If Yes, specify findings)",
             "Neonatal Apgar Score:(1 Minute)", "Neonatal Apgar Score:(5 Minute)",
-            "Mode_of_delivery2", "Antenatal_Peripartum_Maternal_Complications",
-            "History of any abdominal or pelvic surgery", "Any Uterine Surgery previously (Other than Cesarean Section)"
+           "History of any abdominal or pelvic surgery", "Any Uterine Surgery previously (Other than Cesarean Section)"
         ],
         "target_column": "Neonatal__Fetal_Complications"
     },
@@ -135,9 +134,7 @@
             "Per speculum examination", "Per speculum examination (If Yes, specify findings)",
             "Per vaginal examination",
             "Per vaginal examination (If Yes, specify findings)",
-            "Neonatal Apgar Score:(1 Minute)", "Neonatal Apgar Score:(5 Minute)",
             "Mode_of_delivery2", "Antenatal_Peripartum_Maternal_Complications",
-            "Neonatal__Fetal_Complications",
             "Postnatal_Symptoms",
             "Postnatal_Examination",
             "History of any abdominal or pelvic surgery",
