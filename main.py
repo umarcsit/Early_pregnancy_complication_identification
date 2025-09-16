@@ -166,6 +166,7 @@ def _create_mock_model(model_name: str):
 MODEL_ORDER = [
     'Mode_of_delivery2',
     'Antenatal_Peripartum_Maternal_Complications',
+    'Neonatal__Fetal_Complications_without_apgar',
     # 'Neonatal__Fetal_Complications',
     # 'Postnatal_Maternal_Complications'
 ]
@@ -587,7 +588,7 @@ async def predict_mode_of_delivery(data: PatientData):
         model_input = validate_and_clean_data_for_model(data.patientData, model_name)
         
         # Make prediction
-        prediction, prob_dict = make_prediction(
+        prediction,_= make_prediction(
             loaded_models[model_name], 
             model_input, 
             model_name
@@ -602,7 +603,7 @@ async def predict_mode_of_delivery(data: PatientData):
             "model_name": model_name,
             "target_column": MODEL_CONFIG[model_name]['target_column'],
             "prediction": prediction,
-            "probabilities": prob_dict,
+            # "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count']
         }
@@ -629,7 +630,7 @@ async def predict_antenatal_complications(data: PatientData):
         model_input = validate_and_clean_data_for_model(data.patientData, model_name)
         
         # Make prediction
-        prediction, prob_dict = make_prediction(
+        prediction,_ = make_prediction(
             loaded_models[model_name], 
             model_input, 
             model_name
@@ -644,7 +645,6 @@ async def predict_antenatal_complications(data: PatientData):
             "model_name": model_name,
             "target_column": MODEL_CONFIG[model_name]['target_column'],
             "prediction": prediction,
-            "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count']
         }
@@ -671,7 +671,7 @@ async def predict_neonatal_complications(data: PatientData):
         model_input = validate_and_clean_data_for_model(data.patientData, model_name)
         
         # Make prediction
-        prediction, prob_dict = make_prediction(
+        prediction,_ = make_prediction(
             loaded_models[model_name], 
             model_input, 
             model_name
@@ -686,7 +686,6 @@ async def predict_neonatal_complications(data: PatientData):
             "model_name": model_name,
             "target_column": MODEL_CONFIG[model_name]['target_column'],
             "prediction": prediction,
-            "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count'],
         }
@@ -713,7 +712,7 @@ async def predict_postnatal_complications(data: PatientData):
         model_input = validate_and_clean_data_for_model(data.patientData, model_name)
         
         # Make prediction
-        prediction, prob_dict = make_prediction(
+        prediction,_ = make_prediction(
             loaded_models[model_name], 
             model_input, 
             model_name
@@ -728,7 +727,6 @@ async def predict_postnatal_complications(data: PatientData):
             "model_name": model_name,
             "target_column": MODEL_CONFIG[model_name]['target_column'],
             "prediction": prediction,
-            "probabilities": prob_dict,
             "feature_completeness": missing_info['completeness_percentage'],
             "missing_features_count": missing_info['missing_features_count'],
             
