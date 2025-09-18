@@ -5,3 +5,5 @@ numpy
 joblib
 uvicorn[standard]==0.24.0
 scikit-learn==1.6.1
+ollama
+requests

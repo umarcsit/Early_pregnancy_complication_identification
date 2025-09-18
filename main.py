@@ -15,7 +15,9 @@ import warnings
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
-
+import logging
+import requests
+logging.getLogger("watchfiles").setLevel(logging.WARNING)
 # Suppress scikit-learn version warnings for model loading
 warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
 warnings.filterwarnings("ignore", message=".*InconsistentVersionWarning.*")
@@ -557,11 +559,23 @@ async def outcome_model(data: PatientData):
             
             # Add prediction to dataframe for next model (sequential pipeline)
             patient_df[target_column] = prediction
-        
+            
+
+        # Example request
+        data = {
+            "predictions": {
+                "Mode_of_delivery": results['Mode_of_delivery2'],
+                "Antenatal_Peripartum_Maternal_Complications": results['Antenatal_Peripartum_Maternal_Complications']
+            }
+        }
+
+        response = requests.post("http://127.0.0.1:8002/generate-remarks", json=data)
+        result_responsed = response.json()
         # Prepare response
         response = {
             "message": "Sequential prediction completed successfully",
             "predictions": results,
+            "Remarks": result_responsed["instruction"]
         }
         
         return JSONResponse(content=response)
