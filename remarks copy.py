@@ -1,11 +1,10 @@
-# remarks.py - FastAPI endpoint for generating medical remarks using Ollama
+# remarks.py - FastAPI endpoint for generating medical remarks
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import logging
 import json
-from ollama import generate
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,79 +23,9 @@ class RemarksResponse(BaseModel):
     instruction: str
     status: str
 
-def generate_medical_instruction_with_ollama(predictions: Dict[str, str]) -> str:
+def generate_medical_instruction(predictions: Dict[str, str]) -> str:
     """
-    Generate medical instruction using Ollama model
-    """
-    try:
-        # model can be: 'gemma3', 'llama3.2:1b', 'codellama', etc.
-        model = "gemma3"
-        
-        # Create the prompt with the actual predictions
-        prompt = f""" {{
-  "predictions": {{
-    "Mode_of_delivery": "{predictions.get('Mode_of_delivery', 'Not delivered yet')}",
-    "Antenatal_Peripartum_Maternal_Complications": "{predictions.get('Antenatal_Peripartum_Maternal_Complications', 'No complication')}"
-  }}
-}}
-
-  You are a medical assistant for community midwives. 
-Your task is to generate short, clear instructions (2–3 lines) based on the predictions given.
-
-Rules:
-1. If "Antenatal_Peripartum_Maternal_Complications" is one of 
-   [Acute renal failure, cardiac failure, Placenta previa, Antepartum haemorrhage, 
-   Eclampsia, Pre-eclampsia, Placental abruption, Postpartum hemorrhage], 
-   always write: "Complication predicted: <complication>. Please refer to Nearest Hospital."
-
-2. If no complication is detected ("None"), then give guidance according to "Mode_of_delivery":
-   - If "Mode_of_delivery" = "Not delivered yet" → "Patient not delivered yet. Continue regular monitoring and follow antenatal care schedule."
-   - If "Mode_of_delivery" = "Normal Delivery" → "Normal delivery predicted. Continue routine care and prepare for safe delivery."
-   - If "Mode_of_delivery" = "Cesarean Section" → "Cesarean delivery predicted. Ensure hospital preparation and skilled assistance."
-   - If "Mode_of_delivery" = "Assisted Delivery" → "Assisted delivery predicted. Ensure skilled assistance and follow safety measures."
-
-Output Format:
-{{
-  "predictions": {{
-    "Mode_of_delivery": "<value>",
-    "Antenatal_Peripartum_Maternal_Complications": "<value>"
-  }},
-  "instruction": "<final instruction for midwife>"
-}}
-
-    """
-
-        # Generate using Ollama
-        resp = generate(model, prompt)
-        
-        # Extract the response
-        response_text = resp.get("response") or str(resp)
-        
-        # Try to parse JSON response from Ollama
-        try:
-            # Look for JSON in the response
-            if "{" in response_text and "}" in response_text:
-                # Extract JSON part
-                start_idx = response_text.find("{")
-                end_idx = response_text.rfind("}") + 1
-                json_str = response_text[start_idx:end_idx]
-                
-                parsed_response = json.loads(json_str)
-                return parsed_response.get("instruction", response_text)
-            else:
-                return response_text
-        except json.JSONDecodeError:
-            # If JSON parsing fails, return the raw response
-            return response_text
-            
-    except Exception as e:
-        logger.error(f"Error generating medical instruction with Ollama: {str(e)}")
-        # Fallback to rule-based approach if Ollama fails
-        return generate_medical_instruction_fallback(predictions)
-
-def generate_medical_instruction_fallback(predictions: Dict[str, str]) -> str:
-    """
-    Fallback method to generate medical instruction based on predictions without using Ollama
+    Generate medical instruction based on predictions without using Ollama
     """
     try:
         mode_of_delivery = predictions.get("Mode_of_delivery", "Not delivered yet")
@@ -130,21 +59,21 @@ def generate_medical_instruction_fallback(predictions: Dict[str, str]) -> str:
             return f"Minor condition detected: {complications}. Monitor closely and follow standard care protocols."
             
     except Exception as e:
-        logger.error(f"Error in fallback medical instruction generation: {str(e)}")
+        logger.error(f"Error generating medical instruction: {str(e)}")
         return "Unable to generate specific instruction. Please consult with senior medical staff."
 
 @app.post("/generate-remarks", response_model=RemarksResponse)
 async def generate_remarks(data: PredictionData):
     """
-    Generate medical remarks and instructions based on prediction data using Ollama
+    Generate medical remarks and instructions based on prediction data
     """
     try:
         # Validate input data
         if not data.predictions:
             raise HTTPException(status_code=400, detail="Predictions data is required")
         
-        # Generate medical instruction using Ollama
-        instruction = generate_medical_instruction_with_ollama(data.predictions)
+        # Generate medical instruction
+        instruction = generate_medical_instruction(data.predictions)
         
         # Prepare response
         response = RemarksResponse(
