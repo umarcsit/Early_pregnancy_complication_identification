@@ -17,6 +17,7 @@ app = FastAPI(title="Medical Remarks Generator", version="1.0.0")
 class PredictionData(BaseModel):
     """Model for prediction data input"""
     predictions: Dict[str, str]
+    endpoint: str
 
 class RemarksResponse(BaseModel):
     """Model for remarks response"""
@@ -24,23 +25,21 @@ class RemarksResponse(BaseModel):
     instruction: str
     status: str
 
-def generate_medical_instruction_with_ollama(predictions: Dict[str, str]) -> str:
+def create_medical_prompt(predictions: Dict[str, str], endpoint: str) -> str:
     """
-    Generate medical instruction using Ollama model
+    Create the medical prompt based on endpoint and predictions
     """
-    try:
-        # model can be: 'gemma3', 'llama3.2:1b', 'codellama', etc.
-        model = "gemma3"
-        
-        # Create the prompt with the actual predictions
+    
+    if endpoint == "modeofdelivery_antinatal":
+        # Prompt for Mode of Delivery + Antenatal Complications
         prompt = f""" {{
-  "predictions": {{
-    "Mode_of_delivery": "{predictions.get('Mode_of_delivery', 'Not delivered yet')}",
-    "Antenatal_Peripartum_Maternal_Complications": "{predictions.get('Antenatal_Peripartum_Maternal_Complications', 'No complication')}"
-  }}
-}}
+   "predictions": {{
+     "Mode_of_delivery": "{predictions.get('Mode_of_delivery', 'Not delivered yet')}",
+     "Antenatal_Peripartum_Maternal_Complications": "{predictions.get('Antenatal_Peripartum_Maternal_Complications', 'No complication')}"
+   }}
+ }}
 
-  You are a medical assistant for community midwives. 
+   You are a medical assistant for community midwives. 
 Your task is to generate short, clear instructions (2–3 lines) based on the predictions given.
 
 Rules:
@@ -49,23 +48,127 @@ Rules:
    Eclampsia, Pre-eclampsia, Placental abruption, Postpartum hemorrhage], 
    always write: "Complication predicted: <complication>. Please refer to Nearest Hospital."
 
-2. If no complication is detected ("None"), then give guidance according to "Mode_of_delivery":
+2. If both conditions are met for LOW RISK PREGNANCY:
+   - "Antenatal_Peripartum_Maternal_Complications" = "No Complication" 
+   - "Mode_of_delivery" = "Not delivered yet" OR "Vaginal"
+   Then write: "These prediction values indicate currently low risk pregnancy to be followed for routine followup visits."
+
+3. If no serious complication is detected, then give guidance according to "Mode_of_delivery":
    - If "Mode_of_delivery" = "Not delivered yet" → "Patient not delivered yet. Continue regular monitoring and follow antenatal care schedule."
-   - If "Mode_of_delivery" = "Normal Delivery" → "Normal delivery predicted. Continue routine care and prepare for safe delivery."
+   - If "Mode_of_delivery" = "Normal Delivery" OR "Vaginal" → "Normal delivery predicted. Continue routine care and prepare for safe delivery."
    - If "Mode_of_delivery" = "Cesarean Section" → "Cesarean delivery predicted. Ensure hospital preparation and skilled assistance."
    - If "Mode_of_delivery" = "Assisted Delivery" → "Assisted delivery predicted. Ensure skilled assistance and follow safety measures."
 
 Output Format:
 {{
-  "predictions": {{
-    "Mode_of_delivery": "<value>",
-    "Antenatal_Peripartum_Maternal_Complications": "<value>"
-  }},
-  "instruction": "<final instruction for midwife>"
-}}
+   "predictions": {{
+     "Mode_of_delivery": "<value>",
+     "Antenatal_Peripartum_Maternal_Complications": "<value>"
+   }},
+   "instruction": "<final instruction for midwife>"
+ }}
 
+     """
+    
+    elif endpoint == "neonatal":
+        # Prompt for Neonatal Complications
+        prompt = f""" {{
+   "predictions": {{
+     "Neonatal_Fetal_Complications": "{predictions.get('Neonatal_Fetal_Complications', 'No complication')}"
+   }}
+ }}
+
+   You are a medical assistant for community midwives. 
+Your task is to generate short, clear instructions (2–3 lines) based on the neonatal/fetal complications prediction.
+
+Rules:
+1. If "Neonatal_Fetal_Complications" is one of 
+   [Birth asphyxia, Neonatal sepsis, Respiratory distress syndrome, Jaundice, 
+   Low birth weight, Congenital anomalies, Neonatal death, Fetal distress], 
+   always write: "Neonatal complication predicted: <complication>. Immediate neonatal care required. Refer to specialized neonatal unit."
+
+2. If "Neonatal_Fetal_Complications" = "No Complication" OR "Normal":
+   Then write: "No neonatal complications predicted. Continue routine neonatal monitoring and care."
+
+3. For other minor complications:
+   - Write: "Minor neonatal condition predicted: <complication>. Monitor closely and follow standard neonatal care protocols."
+
+Output Format:
+{{
+   "predictions": {{
+     "Neonatal_Fetal_Complications": "<value>"
+   }},
+   "instruction": "<final instruction for midwife>"
+ }}
+
+     """
+    
+    elif endpoint == "postnatal":
+        # Prompt for Postnatal Complications
+        prompt = f""" {{
+   "predictions": {{
+     "Postnatal_Maternal_Complications": "{predictions.get('Postnatal_Maternal_Complications', 'No Complication')}"
+   }}
+ }}
+
+   You are a medical assistant for community midwives. 
+Your task is to generate short, clear instructions (2–3 lines) based on the postnatal maternal complications prediction.
+
+Rules:
+1. If "Postnatal_Maternal_Complications" is one of 
+   [Postpartum hemorrhage, Puerperal sepsis, Deep vein thrombosis, 
+   Pulmonary embolism, Postpartum depression, Uterine infection], 
+   always write: "Postnatal complication predicted: <complication>. Immediate medical attention required. Refer to hospital."
+
+2. If "Postnatal_Maternal_Complications" = "No Complication" OR "Normal Findings":
+   Then write: "No postnatal complications predicted. Continue routine postnatal care and monitoring."
+
+3. For other minor complications:
+   - Write: "Minor postnatal condition predicted: <complication>. Monitor closely and follow standard postnatal care protocols."
+
+Output Format:
+{{
+   "predictions": {{
+     "Postnatal_Maternal_Complications": "<value>"
+   }},
+   "instruction": "<final instruction for midwife>"
+ }}
+
+     """
+    
+    else:
+        # Default prompt for unknown endpoints
+        prompt = f""" {{
+   "predictions": {predictions}
+ }}
+
+   You are a medical assistant for community midwives. 
+Your task is to generate short, clear instructions (2–3 lines) based on the predictions given.
+
+Please provide appropriate medical guidance based on the prediction values.
+
+Output Format:
+{{
+   "predictions": {predictions},
+   "instruction": "<final instruction for midwife>"
+ }}
+
+     """
+    
+    return prompt
+
+def generate_medical_instruction_with_ollama(predictions: Dict[str, str], endpoint: str) -> str:
     """
-
+    Generate medical instruction using Ollama model
+    """
+    try:
+        # model can be: 'gemma3', 'llama3.2:1b', 'codellama', etc.
+        model = "gemma3"
+        
+        # Create the prompt using the common function
+        prompt = create_medical_prompt(predictions, endpoint)
+        
+        print(prompt)
         # Generate using Ollama
         resp = generate(model, prompt)
         
@@ -92,9 +195,9 @@ Output Format:
     except Exception as e:
         logger.error(f"Error generating medical instruction with Ollama: {str(e)}")
         # Fallback to rule-based approach if Ollama fails
-        return generate_medical_instruction_fallback(predictions)
+        return generate_medical_instruction_fallback(predictions, endpoint)
 
-def generate_medical_instruction_fallback(predictions: Dict[str, str]) -> str:
+def generate_medical_instruction_fallback(predictions: Dict[str, str], endpoint: str = "") -> str:
     """
     Fallback method to generate medical instruction based on predictions without using Ollama
     """
@@ -113,11 +216,20 @@ def generate_medical_instruction_fallback(predictions: Dict[str, str]) -> str:
         if complications in serious_complications:
             return f"Complication predicted: {complications}. Please refer to Nearest Hospital."
         
+        # Check for LOW RISK PREGNANCY conditions
+        is_low_risk = (
+            complications.lower() in ["no complication", "none", "not specified"] and
+            mode_of_delivery.lower() in ["not delivered yet", "vaginal", "normal delivery"]
+        )
+        
+        if is_low_risk:
+            return "These prediction values indicate currently low risk pregnancy to be followed for routine followup visits."
+        
         # If no serious complication, provide guidance based on mode of delivery
         if complications.lower() in ["no complication", "none", "not specified"]:
             if mode_of_delivery == "Not delivered yet":
                 return "Patient not delivered yet. Continue regular monitoring and follow antenatal care schedule."
-            elif mode_of_delivery == "Normal Delivery":
+            elif mode_of_delivery.lower() in ["normal delivery", "vaginal"]:
                 return "Normal delivery predicted. Continue routine care and prepare for safe delivery."
             elif mode_of_delivery == "Cesarean Section":
                 return "Cesarean delivery predicted. Ensure hospital preparation and skilled assistance."
@@ -144,7 +256,7 @@ async def generate_remarks(data: PredictionData):
             raise HTTPException(status_code=400, detail="Predictions data is required")
         
         # Generate medical instruction using Ollama
-        instruction = generate_medical_instruction_with_ollama(data.predictions)
+        instruction = generate_medical_instruction_with_ollama(data.predictions,data.endpoint)
         
         # Prepare response
         response = RemarksResponse(
